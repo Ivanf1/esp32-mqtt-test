@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <WiFi.h>
+
 #include <PubSubClient.h>
+#include <SPI.h>
+#include <Adafruit_TCS34725.h>
 
 #include "secrets.h"
 
@@ -8,8 +11,10 @@
 
 const char *TAG = "MQTT Client";
 
-const char *topic = "esp32/test";
+const char *topic = "esp32/color";
 
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_600MS, TCS34725_GAIN_1X);
+const int colorSensorLedPin = 26;
 unsigned long sensorPreviousUpdateTime = 0;
 #define SENSOR_UPDATE_TIME_INTERVAL 2000
 
@@ -25,16 +30,11 @@ void callback(char *topic, byte *payload, unsigned int length) {
 }
 
 void reconnect_mqtt() {
-  // Loop until we're reconnected
   while (!client.connected()) {
     ESP_LOGD(TAG, "Attempting MQTT connection");
-    // Attempt to connect
     if (client.connect("arduinoClient")) {
       ESP_LOGD(TAG, "MQTT connection established");
-
-      client.publish(topic, "hello world");
       client.subscribe(topic);
-
     } else {
       ESP_LOGE(TAG, "MQTT connection failed, status=%d\nTry again in %d seconds", client.state(), WAIT_TIME_BEFORE_CONNECTION_RETRY);
       delay(WAIT_TIME_BEFORE_CONNECTION_RETRY);
@@ -42,20 +42,41 @@ void reconnect_mqtt() {
   }
 }
 
+void readColorSensor(char * hex) {
+  float red, green, blue;
+
+  tcs.getRGB(&red, &green, &blue);
+
+  char r[12], g[12], b[12];
+  sprintf(r, "%x", (int)red);
+  sprintf(g, "%x", (int)green);
+  sprintf(b, "%x", (int)blue);
+  strcpy(hex, r);
+  strcat(hex, g);
+  strcat(hex, b);
+}
+
 void setup() {
   Serial.begin(115200);
+
   ESP_LOGD(TAG, "Connecting to WiFi SSID: %s", SSID);
- 
   WiFi.mode(WIFI_STA);
   WiFi.begin(SSID, PWD);
-
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     ESP_LOGE(TAG, "WiFi connection failed, status=%d\nTry again in %d seconds", WiFi.status(), WAIT_TIME_BEFORE_CONNECTION_RETRY);
     delay(WAIT_TIME_BEFORE_CONNECTION_RETRY);
   }
-
   ESP_LOGD(TAG, "WiFi connection established\n");
   ESP_LOGD(TAG, "%s", WiFi.localIP().toString());
+
+  if (tcs.begin()) {
+    pinMode(colorSensorLedPin, OUTPUT);
+    ESP_LOGD(TAG, "Found TCS34725 sensor");
+    tcs.enable();
+  } else {
+    ESP_LOGD(TAG, "No TCS34725 found");
+    return;
+  }
 
   client.setServer(BROKER_IP, BROKER_PORT);
   client.setCallback(callback);
@@ -66,9 +87,12 @@ void loop() {
     reconnect_mqtt();
   } else {
     if ((millis() - sensorPreviousUpdateTime) > SENSOR_UPDATE_TIME_INTERVAL) {
-      client.publish(topic, "Hello");
+      char hex[36];
+      readColorSensor(hex);
+      client.publish(topic, hex);
       sensorPreviousUpdateTime = millis();
     }
   }
+  
   client.loop();
 }
