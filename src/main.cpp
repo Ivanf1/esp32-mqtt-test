@@ -10,13 +10,16 @@ const char *TAG = "MQTT Client";
 
 const char *topic = "esp32/test";
 
+unsigned long sensorPreviousUpdateTime = 0;
+#define SENSOR_UPDATE_TIME_INTERVAL 2000
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 void callback(char *topic, byte *payload, unsigned int length) {
   ESP_LOGD(TAG, "Message arrived in topic: %s\nMessage:", topic);
   for (int i = 0; i < length; i++) {
-    ESP_LOGD(TAG, "%s", (char) payload[i]);
+    ESP_LOGD(TAG, "%c", (char) payload[i]);
   }
   ESP_LOGD(TAG, "\n");
 }
@@ -29,9 +32,7 @@ void reconnect_mqtt() {
     if (client.connect("arduinoClient")) {
       ESP_LOGD(TAG, "MQTT connection established");
 
-      // Once connected, publish an announcement...
-      client.publish(topic,"hello world");
-      // ... and resubscribe
+      client.publish(topic, "hello world");
       client.subscribe(topic);
 
     } else {
@@ -64,8 +65,10 @@ void loop() {
   if (!client.connected()) {
     reconnect_mqtt();
   } else {
-    // client.publish(topic, "Hello");
-    // client.subscribe(topic);
+    if ((millis() - sensorPreviousUpdateTime) > SENSOR_UPDATE_TIME_INTERVAL) {
+      client.publish(topic, "Hello");
+      sensorPreviousUpdateTime = millis();
+    }
   }
   client.loop();
 }
