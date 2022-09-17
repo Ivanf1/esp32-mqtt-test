@@ -21,7 +21,7 @@ unsigned long sensorPreviousUpdateTime = 0;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-void callback(char *topic, byte *payload, unsigned int length) {
+void on_mqtt_message_received(char *topic, byte *payload, unsigned int length) {
   ESP_LOGD(TAG, "Message arrived in topic: %s\nMessage:", topic);
   for (int i = 0; i < length; i++) {
     ESP_LOGD(TAG, "%c", (char) payload[i]);
@@ -29,10 +29,10 @@ void callback(char *topic, byte *payload, unsigned int length) {
   ESP_LOGD(TAG, "\n");
 }
 
-void reconnect_mqtt() {
+void mqtt_reconnect() {
   while (!client.connected()) {
     ESP_LOGD(TAG, "Attempting MQTT connection");
-    if (client.connect("arduinoClient")) {
+    if (client.connect("esp32-color-sensor")) {
       ESP_LOGD(TAG, "MQTT connection established");
       client.subscribe(topic);
     } else {
@@ -42,7 +42,7 @@ void reconnect_mqtt() {
   }
 }
 
-void readColorSensor(char * hex) {
+void read_color_sensor(char * hex) {
   float red, green, blue;
 
   tcs.getRGB(&red, &green, &blue);
@@ -79,16 +79,16 @@ void setup() {
   }
 
   client.setServer(BROKER_IP, BROKER_PORT);
-  client.setCallback(callback);
+  client.setCallback(on_mqtt_message_received);
 }
 
 void loop() {
   if (!client.connected()) {
-    reconnect_mqtt();
+    mqtt_reconnect();
   } else {
     if ((millis() - sensorPreviousUpdateTime) > SENSOR_UPDATE_TIME_INTERVAL) {
       char hex[36];
-      readColorSensor(hex);
+      read_color_sensor(hex);
       client.publish(topic, hex);
       sensorPreviousUpdateTime = millis();
     }
